@@ -8,7 +8,7 @@ license: MIT
 compatibility: Python 3.9+ and local files in an Obsidian Vault. Standard library only. Offline operation.
 metadata:
   author: Kornvia
-  version: "1.3.1"
+  version: "1.3.2"
 ---
 
 # RedNote Vault Sync
@@ -36,6 +36,7 @@ metadata:
 ## 回忆与收件箱
 
 - 用户问「我收藏过哪些」「之前存的那篇」时，用 [只读查询](scripts/query_rednote.py) 按关键词和元数据检索。读命中的笔记再回答，每条附上可打开的笔记链接。零命中就说明未找到。用户说已看完或用过时，可提议更新 status。
+  在 Skill 目录运行 `python3 scripts/query_rednote.py --vault Vault --text "关键词一 关键词二" --output table`。多个关键词在同一个 `--text` 参数内用空格分开，须全部命中。
 - 收件箱用导入脚本的 --format inbox 和 --dry-run。只移动成功归档的行，失败条目下方会出现「未导入」提示框。收件箱缺失时，经用户同意才用 --init-inbox 创建。
 - 详细命令见[整理、回忆和收件箱](references/organize-and-recall.md)。
 

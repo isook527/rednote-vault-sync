@@ -28,9 +28,11 @@ from rednote_notes import clean_text, legacy_frontmatter, note_fields, safe_mark
 
 NOTE_ID = re.compile(r"[0-9a-f]{24}", re.I)
 URL_IN_TEXT = re.compile(r"https?://[A-Za-z0-9\-._~:/?#@!$&'*+,;=%]+", re.I)
+MARKDOWN_AUTOLINK = re.compile(rf"\[((?i:{URL_IN_TEXT.pattern}))\]\(\1\)")
 SHARE_WRAPPER = re.compile(r"【([^】]+?)\s*\|\s*小红书[^】]*】")
 SHARE_CODE = re.compile(r"([\U0001F300-\U0001FAFF])\s*[A-Za-z0-9]+\s*\1")
 SHARE_FOOTER = re.compile(r"\s*(?:复制本条(?:信息)?|打开【小红书】(?:App)?|点击链接).*$", re.I)
+SHORT_LINK_HOSTS = {"xhslink.com", "www.xhslink.com", "xhslink.cn", "www.xhslink.cn"}
 WIKI_MEDIA = re.compile(r"!\[\[([^\]\n]+)\]\]")
 REMOTE_MEDIA = re.compile(r"!\[[^\]\n]*\]\(https?://[^\n)]*\)", re.I)
 MEDIA_TYPES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".mkv", ".mov", ".mp4", ".ogv", ".webm"}
@@ -64,7 +66,7 @@ def canonical_url(value):
     except ValueError:
         valid = False
     if not valid:
-        raise InputError("请提供小红书原帖链接或 xhslink.com 分享短链。")
+        raise InputError("请提供小红书原帖链接或 xhslink.com、xhslink.cn 分享短链。")
     path = parsed.path.rstrip("/")
     if host in {"www.xiaohongshu.com", "xiaohongshu.com", "m.xiaohongshu.com"}:
         if re.fullmatch(r"/user/profile/[0-9a-f]{24}", path, re.I):
@@ -73,8 +75,8 @@ def canonical_url(value):
         if match:
             identity = match.group(1).lower()
             return identity, f"https://www.xiaohongshu.com/explore/{identity}"
-    if host in {"xhslink.com", "www.xhslink.com"} and re.fullmatch(r"/(?:[A-Za-z0-9_-]{1,12}/)?[A-Za-z0-9_-]{3,64}", path):
-        url = f"https://xhslink.com{path}"
+    if host in SHORT_LINK_HOSTS and re.fullmatch(r"/(?:[A-Za-z0-9_-]{1,12}/)?[A-Za-z0-9_-]{3,64}", path):
+        url = f"https://{host.removeprefix('www.')}{path}"
         return "share-" + hashlib.sha256(url.encode()).hexdigest()[:24], url
     raise InputError("链接格式不受支持。请使用原帖直链或分享短链。")
 
@@ -141,6 +143,7 @@ def share_lines(lines, collection):
         if not line or line.startswith(("#", "<!--", "> [!warning]")):
             previous = ""
             continue
+        line = MARKDOWN_AUTOLINK.sub(r"\1", line)
         links = list(URL_IN_TEXT.finditer(line))
         if not links:
             previous = line

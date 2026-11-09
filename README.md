@@ -22,7 +22,7 @@ Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本�
 | --- | --- |
 | Codex | 把完整的 `skills/rednote-vault-sync` 文件夹复制到项目的 `.agents/skills/`，或复制到 `~/.agents/skills/` 供所有项目使用。在该项目中开启对话，输入 `$rednote-vault-sync` 或直接描述任务。 |
 | Claude Code | 把同一文件夹复制到项目的 `.claude/skills/`，或复制到 `~/.claude/skills/` 供所有项目使用。可在项目中输入 `/rednote-vault-sync`。 |
-| Claude 网页或桌面 | 下载独立的 `rednote-vault-sync-skill-v1.3.1.zip`，在 **Customize → Skills** 选择添加或上传 Skill。需要具备自定义 Skills 和代码执行权限。在远程沙盒中，只能处理你明确提供给 Claude 的文件，可请它返回结果，再由你放入本地 Vault。 |
+| Claude 网页或桌面 | 下载独立的 `rednote-vault-sync-skill-v1.3.2.zip`，在 **Customize → Skills** 选择添加或上传 Skill。需要具备自定义 Skills 和代码执行权限。在远程沙盒中，只能处理你明确提供给 Claude 的文件，可请它返回结果，再由你放入本地 Vault。 |
 
 独立 Skill zip 解压后也可用于前两种安装。命令行试用和使用 Skill 是两条独立的入口。官方说明见 [Codex Skills](https://learn.chatgpt.com/docs/build-skills)、[Claude Code](https://code.claude.com/docs/en/skills)、[Claude 自定义 Skills](https://support.claude.com/en/articles/12512180-use-skills-in-claude)。
 
@@ -33,6 +33,14 @@ Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本�
 - “我收藏过哪些讲窗边布光的笔记？每条带上笔记链接。”
 
 只提供分享链接也能建档。等你拿到正文或截图，再提供同一条链接补进原笔记。整理摘要和转写时，agent 会先依据现有内容制作本地 JSON，再给你看写入预览。
+
+也可以在仓库根目录直接查询上面生成的演示 Vault。
+
+```bash
+python3 skills/rednote-vault-sync/scripts/query_rednote.py --vault demo-vault --text "阅读 暖光" --output table
+```
+
+`--text` 接收查询关键词。多个关键词用空格分开，并用引号包住，结果必须命中所有关键词。
 
 ## 手机收件箱
 
@@ -49,6 +57,18 @@ Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本�
 - **短链和直链看起来像同一篇**　离线无法推断关系。确认对应后，在本地映射表登记，后续按同一帖子 ID 识别。
 - **怎么撤销**　把本次 JSON 报告和原 Vault 路径交给 agent，先预览撤销范围。编辑过的文件会保留。默认报告在 `小红书收藏/.导入记录/`。
 - **旧笔记还用 ID 命名**　原文件名会保留，后续补全按 `sourceId` 匹配。新笔记默认采用「标题 - ID 后六位」。
+- **升级后看不到新的收藏视图**　Obsidian 重存过的 `小红书收藏/收藏.base` 会被保留。要生成新版的默认视图，先把这个文件移出 Vault 留存，再正常导入一次。
+
+## 开发与测试
+
+脚本只依赖 Python 标准库。测试使用 pytest。在仓库根目录运行以下命令。
+
+```bash
+python3 -m pip install "pytest>=8,<9"
+python3 -B -m pytest -q -p no:cacheprovider
+```
+
+测试套件不支持 `python -m unittest`。
 
 [Skill](skills/rednote-vault-sync/SKILL.md) · [全部参数](skills/rednote-vault-sync/references/import-format.md) · [整理、回忆与收件箱](skills/rednote-vault-sync/references/organize-and-recall.md) · [隐私](PRIVACY.md) · [更新记录](CHANGELOG.md)
 
