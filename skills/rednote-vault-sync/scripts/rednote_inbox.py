@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import date
 
 from rednote_changes import describe_change
-from rednote_notes import clean_text
+from rednote_notes import safe_markdown
 from rednote_files import ConflictError, InputError, enrichment_lock, publish_file
 
 ERROR_PREFIX = "<!-- rednote:inbox:error "
@@ -67,7 +67,7 @@ class Inbox:
                 if not history.endswith(("\n", "\r")):
                     history += self.newline
                 original = " ".join(line.strip() for line in self.lines[start - 1:end])
-                original = clean_text(original).replace("<", "&lt;")
+                original = safe_markdown(original)
                 history += f"- {date.today().isoformat()} {' '.join(links)} · {original}{self.newline}"
         pending_text = "".join(pending)
         if history and pending_text and not pending_text.endswith(("\n", "\r")):

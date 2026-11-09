@@ -28,7 +28,7 @@ def command(vault, *args, code=0, script="import_rednote.py"):
 
 
 def save(path, content):
-    path.write_text(content, encoding="utf-8")
+    path.write_bytes(content.encode("utf-8"))
     return path
 
 
@@ -135,7 +135,7 @@ def test_inbox_only_moves_successes_and_undo_restores_exact_text(vault):
     assert command(vault,"--format","inbox","--init-inbox","--dry-run")["planned"]==1
     assert not path.exists()
     assert command(vault,"--format","inbox","--init-inbox")["created"]==1
-    original=(f"标题另起一行\n{BASE}{FIRST}?xsec_token=synthetic\n\n"
+    original=(f"标题另起一行 ![[其他笔记]] <script>test</script>\n{BASE}{FIRST}?xsec_token=synthetic\n\n"
               "https://www.xiaohongshu.com/user/profile/000000000000000000000999\n\n"
               "## 已处理\n\n旧历史保留。\n")
     save(path,original)
@@ -147,7 +147,7 @@ def test_inbox_only_moves_successes_and_undo_restores_exact_text(vault):
     pending,history=after.split("## 已处理")
     assert "标题另起一行" not in pending and "标题另起一行" in history
     assert "用户主页" in pending and "旧历史保留。" in history
-    assert "synthetic" not in history
+    assert all(value not in history for value in ("synthetic", "![[其他笔记]]", "<script>"))
     again=command(vault,"--format","inbox",code=1)
     assert again["created"]==0 and "report_path" not in again
     undo=command(vault,"--undo",vault/imported["report_path"])
@@ -244,7 +244,7 @@ with patch.object(socket, "socket", side_effect=AssertionError("Unexpected netwo
     assert result.returncode == 0, result.stderr
 
 
-def test_release_versions_agree(vault):
+def test_release_versions_agree():
     import re
 
     skill = (SCRIPTS.parent / "SKILL.md").read_text(encoding="utf-8")
@@ -253,3 +253,21 @@ def test_release_versions_agree(vault):
     assert output.strip() == version
     assert re.search(r"^## (\S+)", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), re.M)[1] == version
     assert f"rednote-vault-sync-skill-v{version}.zip" in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+
+def test_annotation_survives_windows_line_ending_conversion(vault, tmp_path):
+    report = command(vault, "--format", "json", "--source",
+                     data(tmp_path / "manifest.json", [{"id": FIRST}]))
+    note = vault / report["records"][0]["note"]
+    original = note.read_bytes()
+    source = data(tmp_path / "annotations.json", [{"id": FIRST, "summary": "整理一"}])
+    first = command(vault, "--annotate", source)
+    annotated = note.read_bytes()
+    note.write_bytes(annotated.replace(b"\n", b"\r\n"))
+    assert command(vault, "--annotate", source)["existing"] == 1
+    second = command(vault, "--annotate", data(source, [{"id": FIRST, "summary": "整理二"}]))
+    assert command(vault, "--undo", vault / second["report_path"])["restored"] == 1
+    assert note.read_bytes() == annotated.replace(b"\n", b"\r\n")
+    assert command(vault, "--undo", vault / first["report_path"])["restored"] == 1
+    assert note.read_bytes() == original.replace(b"\n", b"\r\n")

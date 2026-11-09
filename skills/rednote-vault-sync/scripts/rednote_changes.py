@@ -40,6 +40,14 @@ def restore_change(path, descriptor, patches, dry_run):
     if digest(encoded) != descriptor["patch_sha256"]:
         raise InputError("修改记录的校验值不一致。")
     current_hash = digest(current)
+    if descriptor["kind"] == "ai":
+        newline = "\r\n" if "\r\n" in current else "\n"
+
+        def adapt(value):
+            return value.replace("\r\n", "\n").replace("\n", newline)
+
+        patches = [[before, after] if after in current else [adapt(before), adapt(after)]
+                   for before, after in patches]
     if current_hash == descriptor["before_sha256"] or (
         descriptor["kind"] == "ai" and all(
             (current.count(before) == 1 if before else "<!-- rednote:ai:start -->" not in current)

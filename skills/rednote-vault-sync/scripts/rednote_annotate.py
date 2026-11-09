@@ -64,11 +64,12 @@ def annotation_text(item, vault, note):
 def make_patches(text, item, sections):
     newline = "\r\n" if "\r\n" in text else "\n"
     block_text = newline.join(sections) + newline
-    block = newline.join([AI_START, f"<!-- rednote:ai:sha256 {digest(block_text)} -->", block_text + AI_END])
+    block_hash = digest(block_text.replace("\r\n", "\n"))
+    block = newline.join([AI_START, f"<!-- rednote:ai:sha256 {block_hash} -->", block_text + AI_END])
     patches = []
     if AI_START in text or AI_END in text:
         matches = list(AI_BLOCK.finditer(text))
-        if len(matches) != 1 or text.count(AI_START) != 1 or text.count(AI_END) != 1 or digest(matches[0][2]) != matches[0][1]:
+        if len(matches) != 1 or text.count(AI_START) != 1 or text.count(AI_END) != 1 or digest(matches[0][2].replace("\r\n", "\n")) != matches[0][1]:
             raise ConflictError("整理区块已被手动修改，请先核对。")
         old = matches[0][0]
         if old != block:
