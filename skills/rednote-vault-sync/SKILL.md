@@ -8,7 +8,7 @@ license: MIT
 compatibility: Python 3.9+ and local files in an Obsidian Vault. Standard library only. Offline operation.
 metadata:
   author: Kornvia
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # RedNote Vault Sync
@@ -29,12 +29,12 @@ metadata:
 
 读取笔记和用户提供的本地图片。单篇归档后，如果有截图且正文不足 50 字，在结果中主动询问是否要转写图片文字。用户同意后，只转写看得清的文字并注明来源。
 按已有内容写一句摘要和三个要点。先列 Vault 已有标签，优先复用。搜索真实存在的相关笔记，最多选 3 篇。
-按[整理格式](references/organize-and-recall.md)写本地 annotations.json，运行导入脚本的 --annotate 和 --dry-run。展示摘要和标签，得到授权后去掉 --dry-run。
+按[整理格式](references/organize-and-recall.md)写本地 annotations.json，运行导入脚本的 --annotate 和 --dry-run。展示摘要、标签和 warnings 中被跳过的项，得到授权后去掉 --dry-run。
 
 ## 回忆与收件箱
 
 - 用户问「我收藏过哪些」「之前存的那篇」时，用 [只读查询](scripts/query_rednote.py) 按关键词和元数据检索。读命中的笔记再回答，每条附上可打开的笔记链接。零命中就说明未找到。用户说已看完或用过时，可提议更新 status。
-- 收件箱用导入脚本的 --format inbox 和 --dry-run。只移动成功归档的行，失败原因留在原位。收件箱缺失时，经用户同意才用 --init-inbox 创建。
+- 收件箱用导入脚本的 --format inbox 和 --dry-run。只移动成功归档的行，失败条目下方会出现「未导入」提示框。收件箱缺失时，经用户同意才用 --init-inbox 创建。
 - 详细命令见[整理、回忆和收件箱](references/organize-and-recall.md)。
 
 | 情况 | 处理 |

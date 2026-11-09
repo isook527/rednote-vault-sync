@@ -8,7 +8,9 @@ from rednote_changes import describe_change
 from rednote_notes import safe_markdown
 from rednote_files import ConflictError, InputError, enrichment_lock, publish_file
 
-ERROR_PREFIX = "<!-- rednote:inbox:error "
+ERROR_PREFIX = "> [!warning] 未导入："
+LEGACY_ERROR_PREFIX = "<!-- rednote:inbox:error "
+ERROR_PREFIXES = (ERROR_PREFIX, LEGACY_ERROR_PREFIX)
 HEADING = re.compile(r"^## 已处理[ \t]*\r?$", re.M)
 INTRO = "请每行粘贴一条小红书分享文案。\n"
 
@@ -50,15 +52,24 @@ class Inbox:
                     moved[number] = start, links
         removed = {line for end, (start, _) in moved.items() for line in range(start, end + 1)}
         pending = []
+        after_error = False
         for number, line in enumerate(self.lines, 1):
-            if number in removed or line.lstrip().startswith(ERROR_PREFIX):
+            if line.lstrip().startswith(ERROR_PREFIXES):
+                after_error = True
+                continue
+            if after_error and not line.strip():
+                # The blank line written after a warning keeps the next entry out of the callout.
+                after_error = False
+                continue
+            after_error = False
+            if number in removed:
                 continue
             pending.append(line)
             if number in reasons:
-                message = " ".join(reasons[number].split()).replace("--", "—")
+                message = " ".join(reasons[number].split())
                 if not line.endswith(("\n", "\r")):
                     pending.append(self.newline)
-                pending.append(f"{ERROR_PREFIX}{message} -->{self.newline}")
+                pending.append(f"{ERROR_PREFIX}{message}{self.newline}{self.newline}")
         history = self.history
         if moved:
             if not history:

@@ -7,3 +7,5 @@ data.json
 demo-vault/
 
 dist/
+.pytest_cache/
+private/

@@ -13,6 +13,8 @@ from rednote_notes import clean_text, legacy_frontmatter, safe_markdown, scan_no
 
 AI_START = "<!-- rednote:ai:start -->"
 AI_END = "<!-- rednote:ai:end -->"
+MY_NOTES = "## 我的笔记"
+TAG = re.compile(r"[\w/-]+")
 AI_BLOCK = re.compile(
     re.escape(AI_START) + r"\r?\n<!-- rednote:ai:sha256 ([0-9a-f]{64}) -->\r?\n(.*?)" + re.escape(AI_END),
     re.S,
@@ -26,7 +28,7 @@ def strings(item, key):
     return list(dict.fromkeys(x.strip() for x in values))
 
 
-def annotation_text(item, vault, note):
+def annotation_text(item, vault, note, warnings):
     summary = text_field(item, "summary")
     points = strings(item, "points")
     transcript = text_field(item, "transcript")
@@ -48,20 +50,23 @@ def annotation_text(item, vault, note):
         raise InputError("每篇整理最多关联三篇笔记。")
     links = []
     for target in related:
+        # Paths that leave the Vault stay a hard error; ordinary mistakes are skipped and reported.
         path = checked_path(vault, relative_parts(target if target.endswith(".md") else target + ".md"))
-        if not path.is_file() or path == note:
-            raise InputError("关联笔记须是 Vault 中另一篇真实存在的 Markdown 笔记。")
         rel = path.relative_to(vault).with_suffix("").as_posix()
-        if "#" in rel:
-            raise InputError("关联路径不能包含 #。")
-        if rel not in links:
+        if not path.is_file() or path.is_symlink():
+            warnings.append(f"关联笔记不存在，已跳过：{clean_text(target)}")
+        elif path == note:
+            warnings.append("关联笔记不能指向本篇，已跳过。")
+        elif "#" in rel:
+            warnings.append(f"关联路径含 #，已跳过：{clean_text(target)}")
+        elif rel not in links:
             links.append(rel)
     if links:
         sections.extend(["", "### 相关笔记", "", *(f"- [[{link}]]" for link in links)])
     return summary, sections
 
 
-def make_patches(text, item, sections):
+def make_patches(text, item, sections, warnings):
     newline = "\r\n" if "\r\n" in text else "\n"
     block_text = newline.join(sections) + newline
     block_hash = digest(block_text.replace("\r\n", "\n"))
@@ -74,15 +79,22 @@ def make_patches(text, item, sections):
         old = matches[0][0]
         if old != block:
             patches.append([old, block])
+    elif len(re.findall(r"^" + re.escape(MY_NOTES) + r"[ \t]*\r?$", text, re.M)) == 1 and text.count(MY_NOTES) == 1:
+        # Keep the reader's own notes last, where people naturally keep writing.
+        patches.append([MY_NOTES, block + newline * 2 + MY_NOTES])
     else:
         patches.append(["", newline * 2 + block + newline])
 
     tags = strings(item, "tags")
     fields, _ = legacy_frontmatter(text.removeprefix("\ufeff").replace("\r\n", "\n"))
     old_tags = fields.get("tags", [])
-    new_tags = list(dict.fromkeys([*old_tags, *(
-        tag for tag in tags if re.fullmatch(r"[\w/-]+", tag) and not tag.isdigit()
-    )]))
+    valid = []
+    for tag in tags:
+        if TAG.fullmatch(tag) and not tag.isdigit():
+            valid.append(tag)
+        else:
+            warnings.append(f"标签不符合 Obsidian 规则，已跳过：{clean_text(tag)}")
+    new_tags = list(dict.fromkeys([*old_tags, *valid]))
     if new_tags != old_tags:
         header = re.match(r"\A\ufeff?---\r?\n(.*?)\r?\n---(?:\r?\n|\Z)", text, re.S)
         old = re.search(r"^tags:[^\r\n]*(?:\r?\n[ \t]*-[ \t]+[^\r\n]+)*", header[1], re.M) if header else None
@@ -125,9 +137,13 @@ def annotate(args, vault, folder, report):
             entry["note"] = relative.as_posix()
             raw = note.read_bytes()
             original = raw.decode("utf-8")
-            summary, sections = annotation_text(item, vault, note)
-            patches, tags = make_patches(original, item, sections)
+            warnings = []
+            summary, sections = annotation_text(item, vault, note, warnings)
+            patches, tags = make_patches(original, item, sections, warnings)
             entry.update(summary=clean_text(summary), tags=tags)
+            if warnings:
+                entry["warnings"] = warnings
+                entry["reason"] = "；".join(warnings)
             if not patches:
                 status = "existing"
             else:

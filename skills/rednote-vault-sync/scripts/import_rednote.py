@@ -138,7 +138,7 @@ def share_lines(lines, collection):
     previous = ""
     for number, line in enumerate(lines, 1):
         line = line.strip()
-        if not line or line.startswith(("#", "<!--")):
+        if not line or line.startswith(("#", "<!--", "> [!warning]")):
             previous = ""
             continue
         links = list(URL_IN_TEXT.finditer(line))

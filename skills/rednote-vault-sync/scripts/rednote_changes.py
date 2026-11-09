@@ -48,8 +48,11 @@ def restore_change(path, descriptor, patches, dry_run):
 
         patches = [[before, after] if after in current else [adapt(before), adapt(after)]
                    for before, after in patches]
+    marker = "<!-- rednote:ai:start -->"
+    # A patch that inserted a block counts as undone only once no managed block remains.
+    inserted = any(marker in after and marker not in before for before, after in patches)
     if current_hash == descriptor["before_sha256"] or (
-        descriptor["kind"] == "ai" and all(
+        descriptor["kind"] == "ai" and (not inserted or marker not in current) and all(
             (current.count(before) == 1 if before else "<!-- rednote:ai:start -->" not in current)
             and after not in current
             for before, after in patches

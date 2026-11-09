@@ -15,6 +15,34 @@ from rednote_files import InputError, checked_path, read_text, relative_parts, u
 from rednote_notes import legacy_frontmatter, scan_notes
 
 
+RELATED = re.compile(r"^### 相关笔记[ \t]*\n.*?(?=^#{1,6} |<!-- rednote:ai:end -->|\Z)", re.S | re.M)
+SCAFFOLD = re.compile(
+    r"^(?:#{1,6} (?:收藏内容|本地附件|整理|图片转写（AI）|我的笔记)[ \t]*|\[打开小红书原帖\]\([^)\n]*\)|来源图片 · .*)$",
+    re.M,
+)
+
+
+def wiki_label(match):
+    target, _, label = match[1].partition("|")
+    return label or target.rsplit("/", 1)[-1]
+
+
+def searchable_text(title, body):
+    """Plain reading text: no link lists, page scaffolding or Markdown syntax."""
+    body = body.replace("\r\n", "\n")
+    body = RELATED.sub("", body)
+    body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    body = re.sub(r"^# " + re.escape(title) + r"[ \t]*$", "", body, flags=re.M)
+    body = SCAFFOLD.sub("", body)
+    body = re.sub(r"!\[\[[^\]\n]*\]\]", "", body)
+    body = re.sub(r"\[\[([^\]\n]+)\]\]", wiki_label, body)
+    body = re.sub(r"!?\[([^\]\n]*)\]\([^)\n]*\)", r"\1", body)
+    body = re.sub(r"^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?(?:\[![^\]]*\][ \t]*)?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+\.[ \t]+)", "", body, flags=re.M)
+    body = re.sub(r"(\*\*|__|~~|==|`)", "", body)
+    body = body.replace("&#35;", "#").replace("&lt;", "<").replace("&#33;&#91;", "![")
+    return " ".join((title + "\n" + body).split())
+
+
 def query(args):
     if not args.vault.is_dir():
         raise InputError("目标 Vault 路径不存在或不是文件夹。")
@@ -47,7 +75,7 @@ def query(args):
                 continue
             if args.since and saved_at < args.since:
                 continue
-            text = " ".join(re.sub(r"<!--.*?-->", "", title + "\n" + body, flags=re.S).split())
+            text = searchable_text(title, body)
             if not all(term in text.casefold() for term in terms):
                 continue
             anchor = min(terms, key=text.casefold().count) if terms else ""

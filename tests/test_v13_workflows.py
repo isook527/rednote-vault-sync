@@ -101,14 +101,13 @@ def test_annotation_preview_update_conflict_and_reversible_local_patch(vault,tmp
     assert note.read_text(encoding="utf-8")==edited
 
 
-def test_annotation_rejects_missing_or_unsafe_related_notes(vault,tmp_path):
+def test_annotation_rejects_related_paths_outside_vault(vault,tmp_path):
     report=command(vault,"--format","json","--source",data(tmp_path/"manifest.json",[{"id":FIRST}]))
     path=vault/report["records"][0]["note"]
     before=path.read_bytes()
-    for related in ("不存在", "../Vault/外部"):
-        source=data(tmp_path/"annotations.json",[{"id":FIRST,"summary":"摘要","related":[related]}])
-        assert command(vault,"--annotate",source,code=1)["failed"]==1
-        assert path.read_bytes()==before
+    source=data(tmp_path/"annotations.json",[{"id":FIRST,"summary":"摘要","related":["../Vault/外部"]}])
+    assert command(vault,"--annotate",source,code=1)["failed"]==1
+    assert path.read_bytes()==before
 
 
 def test_query_uses_existing_content_and_filters_without_writes(vault,tmp_path):
