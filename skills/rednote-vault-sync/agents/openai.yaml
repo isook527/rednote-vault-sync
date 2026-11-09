@@ -1,3 +1,4 @@
 interface:
   display_name: "RedNote Vault Sync"
-  short_description: "把小红书收藏和本地媒体整理成 Obsidian 笔记"
+  short_description: "将小红书收藏和本地图片视频归档到 Obsidian，并补全已有笔记"
+  default_prompt: "用 $rednote-vault-sync 预览我提供的分享文案和附件，列出拟新增、拟补全和需确认归属的项目。"

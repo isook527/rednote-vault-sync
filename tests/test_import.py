@@ -177,6 +177,107 @@ class ImportTests(unittest.TestCase):
         self.assertNotIn("example.invalid", note)
         self.assertEqual(legacy.read_bytes(), before)
 
+    def test_share_to_enriched_note_preserves_edits_and_is_idempotent(self):
+        third = "000000000000000000000103"
+        shares = self.root / "分享.txt"
+        shares.write_text(
+            f"窗边阅读角\n{BASE}{FIRST}\n\n第二条 {BASE}{SECOND}\n\n第三条 {BASE}{third}\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(self.invoke("shares", shares, "--dry-run")["planned"], 3)
+        self.assertEqual(list(self.vault.iterdir()), [])
+        self.assertEqual(self.invoke("shares", shares)["created"], 3)
+        note = self.note()
+        annotation = "\r\n## 我的批注\r\n\r\n试试把灯放到左侧。\r\n"
+        original = note.read_bytes().replace(b"\n", b"\r\n") + annotation.encode()
+        note.write_bytes(original)
+        self.assertIn("窗边阅读角", original.decode())
+        shares.write_text(f"{BASE}{FIRST}\n", encoding="utf-8")
+        body = self.root / "正文.txt"
+        body.write_text("灯光观察。\n\n## 记录\n照度偏低。", encoding="utf-8")
+        attachments = [
+            EXAMPLE / "media/reading-corner.png",
+            REPO / "docs/03-vault-output.png",
+        ]
+        flags = ["--enrich", "--body-file", str(body)]
+        for path in attachments:
+            flags += ["--attach", str(path)]
+        plan = self.invoke("shares", shares, *flags, "--dry-run")
+        self.assertEqual((plan["planned_update"], plan["local_media"]), (1, 2))
+        self.assertEqual(note.read_bytes(), original)
+        self.assertFalse((note.parents[1] / "媒体").exists())
+        result = self.invoke("shares", shares, *flags)
+        self.assertEqual((result["created"], result["updated"], result["local_media"]), (0, 1, 2))
+        final = note.read_bytes()
+        self.assertTrue(final.startswith(original.replace(b"localMediaCount: 0", b"localMediaCount: 2")))
+        self.assertIn(annotation.encode(), final)
+        self.assertIn("照度偏低。", final.decode())
+        links = re.findall(r"!\[\[([^\]]+)\]\]", final.decode())
+        self.assertEqual([hashlib.sha256((self.vault / p).read_bytes()).hexdigest() for p in links],
+                         [hashlib.sha256(p.read_bytes()).hexdigest() for p in attachments])
+        repeat = self.invoke("shares", shares, *flags)
+        self.assertEqual((repeat["created"], repeat["updated"], repeat["existing"]), (0, 0, 1))
+        self.assertEqual(note.read_bytes(), final)
+        self.assertEqual(len(list(self.vault.rglob("*.md"))), 3)
+
+    def test_shared_attachments_require_a_single_identified_note(self):
+        shares = self.root / "shares.txt"
+        shares.write_text(f"{BASE}{FIRST}\n{BASE}{SECOND}\n", encoding="utf-8")
+        asset = EXAMPLE / "media/reading-corner.png"
+        result = self.invoke("shares", shares, "--attach", str(asset), "--dry-run", expect=1)
+        self.assertEqual((result["planned"], result["unassigned_media"]), (2, [1]))
+        self.assertEqual(list(self.vault.iterdir()), [])
+        result = self.invoke("shares", shares, "--attach", str(asset), expect=1)
+        self.assertEqual((result["created"], result["local_media"]), (2, 0))
+        self.assertFalse((self.note().parents[1] / "媒体").exists())
+
+    def test_conflicting_existing_body_blocks_supplement_without_writes(self):
+        shares = self.root / "shares.txt"
+        shares.write_text(f"{BASE}{FIRST}\n", encoding="utf-8")
+        self.invoke("shares", shares)
+        note = self.note()
+        original = note.read_bytes() + "\n## 收藏内容\n\n自己抄写的正文。\n".encode()
+        note.write_bytes(original)
+        body = self.root / "body.txt"
+        body.write_text("另一份正文。", encoding="utf-8")
+        result = self.invoke(
+            "shares", shares, "--enrich", "--body-file", str(body),
+            "--attach", str(EXAMPLE / "media/reading-corner.png"), expect=1,
+        )
+        self.assertEqual(result["conflict"], 1)
+        self.assertIn("正文", result["records"][0]["reason"])
+        self.assertEqual(note.read_bytes(), original)
+        self.assertFalse((note.parents[1] / "媒体").exists())
+
+    def test_enrich_mismatched_link_does_not_create_another_note(self):
+        shares = self.root / "shares.txt"
+        shares.write_text(f"{BASE}{FIRST}\n", encoding="utf-8")
+        self.invoke("shares", shares)
+        shares.write_text(f"{BASE}{SECOND}\n", encoding="utf-8")
+        asset = EXAMPLE / "media/reading-corner.png"
+        result = self.invoke("shares", shares, "--enrich", "--attach", str(asset), expect=1)
+        self.assertEqual((result["conflict"], result["created"]), (1, 0))
+        self.assertEqual(list(self.vault.rglob("*.md")), [self.note()])
+        self.assertFalse((self.note().parents[1] / "媒体").exists())
+
+    def test_old_short_link_note_can_be_enriched_without_resolving_it(self):
+        shares = self.root / "shares.txt"
+        link = "https://xhslink.com/a/KornviaDemo"
+        shares.write_text(link + "\n", encoding="utf-8")
+        identity = "share-" + hashlib.sha256(link.encode()).hexdigest()[:24]
+        note = self.note(identity)
+        note.parent.mkdir(parents=True)
+        note.write_text(
+            f'---\nsourcePlatform: rednote\nsourceId: "{identity}"\nsourceUrl: {link}\n'
+            'localMediaCount: 0\n---\n\n# 旧收藏\n\n这条备注要保留。\n',
+            encoding="utf-8",
+        )
+        media = EXAMPLE / "media/reading-corner.png"
+        self.assertEqual(self.invoke("shares", shares, "--attach", str(media))["existing"], 1)
+        self.assertEqual(self.invoke("shares", shares, "--enrich", "--attach", str(media))["updated"], 1)
+        self.assertIn("这条备注要保留。", note.read_text(encoding="utf-8"))
+        self.assertEqual(len(list(self.vault.rglob("*.md"))), 1)
+
     def test_bad_json_is_fatal_without_output(self):
         source = self.root / "bad.json"
         source.write_text("{invalid", encoding="utf-8")
