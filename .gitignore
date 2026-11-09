@@ -5,3 +5,7 @@ __pycache__/
 data.json
 .obsidian/
 demo-vault/
+
+dist/
+.pytest_cache/
+private/

@@ -1,59 +1,55 @@
 # RedNote Vault Sync
 
-**Kornvia · MIT**
+把小红书分享文案和本地图片、视频整理成 Obsidian 笔记。之后还能补到同一篇、保留手写笔记，按收藏夹查看或按关键词找回。
 
-把小红书收藏整理成 Obsidian 笔记，把已有的图片和视频放进同一个 Vault。可在 Codex 中用 Skill 操作，也可直接运行 Python 脚本。
+![Obsidian 收藏表格中的两篇演示笔记、收藏夹、状态与日期](docs/obsidian-vault.png)
 
-![三类输入。分享链接生成索引，JSON 清单导入正文和本地媒体，旧库迁移原文和本地附件。](docs/01-inputs.png)
+导入脚本全程离线，只处理你提供的文件。它不会抓取小红书、登录、读取账号收藏或访问分享链接。
 
-## 安装到 Codex
+## 30 秒试用
 
-在你使用 Codex 的项目目录运行以下命令。需要带有 gh skill install 的 GitHub CLI。
+解压完整发布包，在包的根目录用 Python 3.9 或更新版本运行：
 
-~~~bash
-gh skill install isook527/rednote-vault-sync rednote-vault-sync --agent codex --scope project --pin v1.0.1
-~~~
+```bash
+python3 scripts/demo.py
+```
 
-也可以下载源码，把完整的 [skills/rednote-vault-sync](skills/rednote-vault-sync/) 文件夹复制到项目的 .agents/skills/，再打开一个新 Codex 会话。已有同名 Skill 时，先检查现有版本。
+Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本会生成 `demo-vault`，包含两篇笔记、一张图、一段视频、索引和收藏表格。用 Obsidian 的「打开本地仓库」选择这个文件夹，打开 `小红书收藏/收藏.base`。在没有启用 Bases 的 Vault 中，打开 `索引.md`。
 
-在 Codex 中输入：
+## 安装
 
-> 用 $rednote-vault-sync 预览我的 collection.json，把笔记和本地媒体归档到「我的知识库」Vault。告诉我会新增多少条，有哪些附件缺失。
+| 平台 | 安装步骤 |
+| --- | --- |
+| Codex | 把完整的 `skills/rednote-vault-sync` 文件夹复制到项目的 `.agents/skills/`，或复制到 `~/.agents/skills/` 供所有项目使用。在该项目中开启对话，输入 `$rednote-vault-sync` 或直接描述任务。 |
+| Claude Code | 把同一文件夹复制到项目的 `.claude/skills/`，或复制到 `~/.claude/skills/` 供所有项目使用。可在项目中输入 `/rednote-vault-sync`。 |
+| Claude 网页或桌面 | 下载独立的 `rednote-vault-sync-skill-v1.3.1.zip`，在 **Customize → Skills** 选择添加或上传 Skill。需要具备自定义 Skills 和代码执行权限。在远程沙盒中，只能处理你明确提供给 Claude 的文件，可请它返回结果，再由你放入本地 Vault。 |
 
-确认预览后，告诉 Codex 执行写入。你也可以在同一请求中明确授权写入并要求先预览。
+独立 Skill zip 解压后也可用于前两种安装。命令行试用和使用 Skill 是两条独立的入口。官方说明见 [Codex Skills](https://learn.chatgpt.com/docs/build-skills)、[Claude Code](https://code.claude.com/docs/en/skills)、[Claude 自定义 Skills](https://support.claude.com/en/articles/12512180-use-skills-in-claude)。
 
-## 跑一次演示
+## 可以直接这样说
 
-需要 Python 3.9 或更新版本。从仓库根目录运行。演示链接用于展示字段和结构。
+- “把这几条小红书分享文案归档到我的 Obsidian。第一条配这两张图，先给我看预览。”
+- “这篇昨天存过，把正文和截图补进原笔记，保留我写的批注。”
+- “我收藏过哪些讲窗边布光的笔记？每条带上笔记链接。”
 
-~~~bash
-mkdir -p demo-vault
-python3 skills/rednote-vault-sync/scripts/import_rednote.py \
-  --format json --source examples/collection.json --vault demo-vault --dry-run
-python3 skills/rednote-vault-sync/scripts/import_rednote.py \
-  --format json --source examples/collection.json --vault demo-vault
-~~~
+只提供分享链接也能建档。等你拿到正文或截图，再提供同一条链接补进原笔记。整理摘要和转写时，agent 会先依据现有内容制作本地 JSON，再给你看写入预览。
 
-![演示实跑结果。预览计划写入两篇笔记和两个附件。导入生成两篇笔记和两个附件，均无失败。](docs/02-preview-and-import.png)
+## 手机收件箱
 
-在 Obsidian 的 Vault 切换器中用「打开文件夹作为仓库」选择 demo-vault。打开「小红书收藏 → 笔记」里的 …0101.md。笔记上方是收藏夹、作者和来源，下方引用 Vault 里的 PNG 和 MP4。
+![手机复制分享文案，在 Obsidian 收件箱粘贴，随后让 agent 预览并归档](docs/inbox-flow.svg)
 
-![示例导入结果示意。笔记目录内有两篇 Markdown，媒体目录含 PNG 和 MP4。](docs/03-vault-output.png)
+1. 对 agent 说“在这个 Vault 建一个小红书收件箱”。确认后，它会创建 `小红书收藏/收件箱.md`。
+2. 手机端在小红书复制分享文案，到同一个 Obsidian Vault 的收件箱里粘贴，每行一条，放在「已处理」上方。如果手机和电脑分别保存 Vault，需用你自己的同步方式或把文件复制到电脑。
+3. 回到有 Vault 文件访问权限的 agent，说“预览并处理收件箱”。确认写入后，成功的条目附日期和笔记链接移到「已处理」，失败项留在原处并注明原因。
 
-## 换成自己的收藏
+## 常见问题
 
-- **分享链接**。在小红书点分享并复制链接或分享文案，粘贴到 UTF-8 文本，每行一条。把命令中的 --format 改为 shares，--source 指向文本，可加 --collection 指定收藏夹。只有链接时，生成可回看原帖的索引笔记。
-- **正文、图片和视频**。复制 [示例清单](examples/collection.json)，填入标题、正文、收藏夹和来源链接。把已有的附件放在清单所在目录或子目录，在 media 字段中填写相对路径。
-- **旧插件笔记**。保留旧 Vault 的目录结构，使用 --format legacy，--legacy-vault 指向旧 Vault，--source 指向它里面的旧笔记目录，--vault 指向目标 Vault。远程媒体和不支持的嵌入会计入报告。
+- **Windows 和中文路径**　使用 `py -3`。路径有空格时用双引号括起来，分享文本保存为 UTF-8。
+- **视频无法播放**　先用 Obsidian 阅读视图查看，再尝试用系统播放器打开 Vault 内的本地文件。若是编码兼容性问题，可转成常见的 MP4（H.264/AAC）后再补入同一篇。
+- **短链和直链看起来像同一篇**　离线无法推断关系。确认对应后，在本地映射表登记，后续按同一帖子 ID 识别。
+- **怎么撤销**　把本次 JSON 报告和原 Vault 路径交给 agent，先预览撤销范围。编辑过的文件会保留。默认报告在 `小红书收藏/.导入记录/`。
+- **旧笔记还用 ID 命名**　原文件名会保留，后续补全按 `sourceId` 匹配。新笔记默认采用「标题 - ID 后六位」。
 
-更完整的字段说明、错误处理与去重规则见 [导入格式](skills/rednote-vault-sync/references/import-format.md)。
+[Skill](skills/rednote-vault-sync/SKILL.md) · [全部参数](skills/rednote-vault-sync/references/import-format.md) · [整理、回忆与收件箱](skills/rednote-vault-sync/references/organize-and-recall.md) · [隐私](PRIVACY.md) · [更新记录](CHANGELOG.md)
 
-同一篇收藏有多种来源时，优先导入含正文和附件的清单或旧笔记，再导入其余分享链接。若此前已导入链接索引，可用 --folder 将完整笔记写到另一个目录。\n\n脚本在本地运行。它不会登录小红书、扫描收藏夹或下载网络媒体。重复导入按 ID 跳过既有路径，保留手动编辑。请只提供你有权使用的内容和媒体，并把示例目录与自己的 Vault 分开。
-
-## 开发
-
-~~~bash
-python3 -B -m unittest discover -s tests -v
-~~~
-
-[源码与演示素材来源](SOURCES.md) · [MIT License](LICENSE)
+本项目由 **Kornvia** 制作，以 [MIT](LICENSE) 开源。项目与小红书（行吟信息科技）无关联。「小红书」和「RedNote」为其各自所有者的商标。请遵守原作者的版权和平台规则，将用户提供的本地资料用于个人学习和参考。
