@@ -22,7 +22,7 @@ Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本�
 | --- | --- |
 | Codex | 把完整的 `skills/rednote-vault-sync` 文件夹复制到项目的 `.agents/skills/`，或复制到 `~/.agents/skills/` 供所有项目使用。在该项目中开启对话，输入 `$rednote-vault-sync` 或直接描述任务。 |
 | Claude Code | 把同一文件夹复制到项目的 `.claude/skills/`，或复制到 `~/.claude/skills/` 供所有项目使用。可在项目中输入 `/rednote-vault-sync`。 |
-| Claude 网页或桌面 | 下载独立的 `rednote-vault-sync-skill-v1.3.1.zip`，在 **Customize → Skills** 选择添加或上传 Skill。需要具备自定义 Skills 和代码执行权限。在远程沙盒中，只能处理你明确提供给 Claude 的文件，可请它返回结果，再由你放入本地 Vault。 |
+| Claude 网页或桌面 | 下载独立的 `rednote-vault-sync-skill-v1.3.2.zip`，在 **Customize → Skills** 选择添加或上传 Skill。需要具备自定义 Skills 和代码执行权限。在远程沙盒中，只能处理你明确提供给 Claude 的文件，可请它返回结果，再由你放入本地 Vault。 |
 
 独立 Skill zip 解压后也可用于前两种安装。命令行试用和使用 Skill 是两条独立的入口。官方说明见 [Codex Skills](https://learn.chatgpt.com/docs/build-skills)、[Claude Code](https://code.claude.com/docs/en/skills)、[Claude 自定义 Skills](https://support.claude.com/en/articles/12512180-use-skills-in-claude)。
 

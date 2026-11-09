@@ -8,7 +8,7 @@ license: MIT
 compatibility: Python 3.9+ and local files in an Obsidian Vault. Standard library only. Offline operation.
 metadata:
   author: Kornvia
-  version: "1.3.1"
+  version: "1.3.2"
 ---
 
 # RedNote Vault Sync

@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "skills/rednote-vault-sync/scripts/import_rednote.py"
 FIXTURES = ROOT / "tests/fixtures/shares_real.txt"
@@ -42,6 +44,53 @@ def test_mobile_and_web_share_formats(tmp_path):
         identity = url.rsplit("/",1)[1] if url.startswith(direct) else "share-" + hashlib.sha256(url.encode()).hexdigest()[:24]
         assert props == {"title":title, "author":author, "sourceUrl":url, "sourceId":identity}
     assert "用户主页" in report["records"][-1]["reason"]
+
+
+@pytest.mark.parametrize("input_format", ["shares", "inbox"])
+def test_iphone_device_shares(tmp_path, input_format):
+    vault = tmp_path / "iPhone Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    fixture = FIXTURES.with_name("shares_device.txt")
+    shares = fixture.read_text(encoding="utf-8")
+    command = [
+        sys.executable, "-B", str(CLI), "--vault", str(vault), "--format", input_format,
+    ]
+    if input_format == "shares":
+        command.extend(["--source", str(fixture)])
+    else:
+        inbox = vault / "小红书收藏/收件箱.md"
+        inbox.parent.mkdir()
+        inbox.write_text(f"# 收件箱\n\n{shares}\n## 已处理\n", encoding="utf-8")
+
+    result = subprocess.run(command, capture_output=True, encoding="utf-8")
+    report = json.loads(result.stdout)
+    assert result.returncode == 0, report["records"]
+    assert report["created"] == report["link_only"] == 3
+    expected = [
+        ("想一个月多看2本的朋友，可以看看这篇 不需要书单 不需...", "DemoRead001"),
+        ("12种花草一口气认清｜上篇（1–6） 花草分不清？先把...", "DemoLeaf002"),
+        ("𐂐 🍪 𖥣｜分享今日色彩zui佳画册～ 今日画册、随手翻...", "DemoBook003"),
+    ]
+    assert [record["title"] for record in report["records"]] == [title for title, _ in expected]
+    for record, (_, short_id) in zip(report["records"], expected):
+        url = f"https://xhslink.cn/o/{short_id}"
+        identity = "share-" + hashlib.sha256(url.encode()).hexdigest()[:24]
+        note = (vault / record["note"]).read_text(encoding="utf-8")
+        assert f'sourceUrl: "{url}"' in note
+        assert f'sourceId: "{identity}"' in note
+        assert "【小红书】" not in note
+
+    if input_format == "inbox":
+        assert report["inbox_moved"] == 3
+        pending, history = inbox.read_text(encoding="utf-8").split("## 已处理")
+        assert "xhslink.cn" not in pending
+        assert history.count("[[") == 3
+
+    repeated = subprocess.run(command, capture_output=True, encoding="utf-8", check=True)
+    repeated_report = json.loads(repeated.stdout)
+    assert repeated_report["created"] == 0
+    assert repeated_report["existing"] == (3 if input_format == "shares" else 0)
+    assert len(list((vault / "小红书收藏/笔记").glob("*.md"))) == 3
 
 
 def test_gbk_environment_keeps_utf8_table(tmp_path):
