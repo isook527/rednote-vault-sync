@@ -3,7 +3,7 @@ name: rednote-vault-sync
 description: 把用户提供的小红书收藏分享文本、带本地图片或视频的 JSON 清单、或 RedNote Vault Sync 旧笔记整理成 Obsidian Markdown 和本地附件。用于收藏归档和旧库迁移。
 metadata:
   author: Kornvia
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # RedNote Vault Sync

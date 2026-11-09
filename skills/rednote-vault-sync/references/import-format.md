@@ -20,7 +20,7 @@ JSON 文件必须是 {"version": 1, "items": [...]}。每条记录需有 url 或
 | tags | 字符串数组 | 例如 ["空间", "设计/灯光"]。含空格和 Obsidian 不接受的标点会被跳过 |
 | media | 字符串数组 | 相对 JSON 文件所在目录的本地文件名，例如 ["media/灯光.png"] |
 
-图片支持 JPG、PNG、GIF、WebP、AVIF、BMP。视频支持 MP4、WebM、MOV、M4V，能否播放还取决于 Obsidian 的系统编解码器。附件需要是非空的本地文件，缺失时该条报错，修正后可以重试。正文按文本导入，附件单独通过 media 声明。
+图片支持 JPG、PNG、GIF、WebP、AVIF、BMP。视频支持 MKV、MOV、MP4、OGV、WebM，能否播放取决于设备编解码器，见 [Obsidian 支持的文件格式](https://obsidian.md/help/file-formats)。附件需要是非空的本地文件，缺失时该条报错，修正后可以重试。正文按文本导入，附件单独通过 media 声明。
 
 ## 旧库迁移
 

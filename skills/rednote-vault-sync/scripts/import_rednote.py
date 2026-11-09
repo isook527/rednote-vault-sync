@@ -13,13 +13,13 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 NOTE_ID = re.compile(r"[0-9a-f]{24}", re.I)
 URL_IN_TEXT = re.compile(r'https?://[^\s<>"\]\)【】]+', re.I)
 WIKI_MEDIA = re.compile(r"!\[\[([^\]\n]+)\]\]")
 REMOTE_MEDIA = re.compile(r"!\[[^\]\n]*\]\(https?://[^\n)]*\)", re.I)
 QUERY_SECRET = re.compile(r"(?i)(?:xsec_token|access_token|refresh_token|api_key|session_id)=[^\s&#)\]<>]+")
-MEDIA_TYPES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".mp4", ".webm", ".mov", ".m4v"}
+MEDIA_TYPES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".mkv", ".mov", ".mp4", ".ogv", ".webm"}
 RESERVED = {".obsidian", ".git", ".trash"}
 
 

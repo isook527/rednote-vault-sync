@@ -11,7 +11,7 @@
 在你使用 Codex 的项目目录运行以下命令。需要带有 gh skill install 的 GitHub CLI。
 
 ~~~bash
-gh skill install isook527/rednote-vault-sync rednote-vault-sync --agent codex --scope project --pin v1.0.0
+gh skill install isook527/rednote-vault-sync rednote-vault-sync --agent codex --scope project --pin v1.0.1
 ~~~
 
 也可以下载源码，把完整的 [skills/rednote-vault-sync](skills/rednote-vault-sync/) 文件夹复制到项目的 .agents/skills/，再打开一个新 Codex 会话。已有同名 Skill 时，先检查现有版本。

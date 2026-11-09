@@ -103,6 +103,13 @@ class ImportTests(unittest.TestCase):
         self.assertNotIn("synthetic-secret", json.dumps(result))
         self.assertEqual(list(self.vault.iterdir()), [])
 
+    def test_unsupported_obsidian_video_extension_is_rejected(self):
+        video = self.root / "video.m4v"
+        video.write_bytes((EXAMPLE / "media/reading-corner.mp4").read_bytes())
+        report = self.invoke("json", self.manifest({"id": FIRST, "media": [video.name]}), expect=1)
+        self.assertEqual(report["failed"], 1)
+        self.assertFalse(self.note().exists())
+
     def test_manifest_path_traversal_rejected(self):
         source = self.manifest({"id": FIRST, "media": ["../outside.png"]})
         self.assertEqual(self.invoke("json", source, expect=1)["failed"], 1)
