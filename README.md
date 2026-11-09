@@ -34,6 +34,14 @@ Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本�
 
 只提供分享链接也能建档。等你拿到正文或截图，再提供同一条链接补进原笔记。整理摘要和转写时，agent 会先依据现有内容制作本地 JSON，再给你看写入预览。
 
+也可以在仓库根目录直接查询上面生成的演示 Vault。
+
+```bash
+python3 skills/rednote-vault-sync/scripts/query_rednote.py --vault demo-vault --text "阅读 暖光" --output table
+```
+
+`--text` 接收查询关键词。多个关键词用空格分开，并用引号包住，结果必须命中所有关键词。
+
 ## 手机收件箱
 
 ![手机复制分享文案，在 Obsidian 收件箱粘贴，随后让 agent 预览并归档](docs/inbox-flow.svg)
@@ -49,6 +57,17 @@ Windows PowerShell 使用 `py -3 scripts/demo.py`。无需安装依赖。脚本�
 - **短链和直链看起来像同一篇**　离线无法推断关系。确认对应后，在本地映射表登记，后续按同一帖子 ID 识别。
 - **怎么撤销**　把本次 JSON 报告和原 Vault 路径交给 agent，先预览撤销范围。编辑过的文件会保留。默认报告在 `小红书收藏/.导入记录/`。
 - **旧笔记还用 ID 命名**　原文件名会保留，后续补全按 `sourceId` 匹配。新笔记默认采用「标题 - ID 后六位」。
+
+## 开发与测试
+
+脚本只依赖 Python 标准库。测试使用 pytest。在仓库根目录运行以下命令。
+
+```bash
+python3 -m pip install "pytest>=8,<9"
+python3 -B -m pytest -q -p no:cacheprovider
+```
+
+测试套件不支持 `python -m unittest`。
 
 [Skill](skills/rednote-vault-sync/SKILL.md) · [全部参数](skills/rednote-vault-sync/references/import-format.md) · [整理、回忆与收件箱](skills/rednote-vault-sync/references/organize-and-recall.md) · [隐私](PRIVACY.md) · [更新记录](CHANGELOG.md)
 
