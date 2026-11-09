@@ -93,6 +93,38 @@ def test_iphone_device_shares(tmp_path, input_format):
     assert len(list((vault / "小红书收藏/笔记").glob("*.md"))) == 3
 
 
+@pytest.mark.parametrize("markdown_link", [False, True], ids=["plain", "markdown"])
+def test_web_share_urls(tmp_path, markdown_link):
+    vault = tmp_path / "Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    source = FIXTURES.with_name("shares_web.txt")
+    if markdown_link:
+        urls = source.read_text(encoding="utf-8").splitlines()
+        source = tmp_path / "markdown-links.txt"
+        source.write_text("\n".join(f"[{url}]({url})" for url in urls), encoding="utf-8")
+
+    command = [
+        sys.executable, "-B", str(CLI), "--vault", str(vault), "--format", "shares",
+        "--source", str(source), "--filename-style", "id",
+    ]
+    result = subprocess.run(command, capture_output=True, encoding="utf-8", check=True)
+    report = json.loads(result.stdout)
+    assert len(report["records"]) == report["created"] == report["link_only"] == 3
+    assert report["duplicate"] == 0
+    for index, record in enumerate(report["records"], 301):
+        identity = f"{index:024d}"
+        note = (vault / record["note"]).read_text(encoding="utf-8")
+        assert f'sourceId: "{identity}"' in note
+        assert f'sourceUrl: "https://www.xiaohongshu.com/explore/{identity}"' in note
+        assert "xsec_token" not in note and "xsec_source" not in note
+
+    repeated = subprocess.run(command, capture_output=True, encoding="utf-8", check=True)
+    repeated_report = json.loads(repeated.stdout)
+    assert repeated_report["created"] == 0
+    assert repeated_report["existing"] == 3
+    assert repeated_report["duplicate"] == 0
+
+
 def test_gbk_environment_keeps_utf8_table(tmp_path):
     vault=tmp_path/"中文 Vault"
     vault.mkdir()

@@ -28,6 +28,7 @@ from rednote_notes import clean_text, legacy_frontmatter, note_fields, safe_mark
 
 NOTE_ID = re.compile(r"[0-9a-f]{24}", re.I)
 URL_IN_TEXT = re.compile(r"https?://[A-Za-z0-9\-._~:/?#@!$&'*+,;=%]+", re.I)
+MARKDOWN_AUTOLINK = re.compile(rf"\[((?i:{URL_IN_TEXT.pattern}))\]\(\1\)")
 SHARE_WRAPPER = re.compile(r"【([^】]+?)\s*\|\s*小红书[^】]*】")
 SHARE_CODE = re.compile(r"([\U0001F300-\U0001FAFF])\s*[A-Za-z0-9]+\s*\1")
 SHARE_FOOTER = re.compile(r"\s*(?:复制本条(?:信息)?|打开【小红书】(?:App)?|点击链接).*$", re.I)
@@ -142,6 +143,7 @@ def share_lines(lines, collection):
         if not line or line.startswith(("#", "<!--", "> [!warning]")):
             previous = ""
             continue
+        line = MARKDOWN_AUTOLINK.sub(r"\1", line)
         links = list(URL_IN_TEXT.finditer(line))
         if not links:
             previous = line
