@@ -1,0 +1,3 @@
+interface:
+  display_name: "RedNote Vault Sync"
+  short_description: "把小红书收藏和本地媒体整理成 Obsidian 笔记"
