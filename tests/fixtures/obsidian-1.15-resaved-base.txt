@@ -1,0 +1,44 @@
+filters:
+  and:
+    - file.inFolder("小红书收藏/笔记")
+    - file.ext == "md"
+views:
+  - type: table
+    name: 全部
+    order:
+      - file.name
+      - author
+      - collection
+      - status
+      - savedAt
+    sort:
+      - property: savedAt
+        direction: DESC
+  - type: table
+    name: 按收藏夹
+    groupBy:
+      property: collection
+      direction: ASC
+    order:
+      - file.name
+      - author
+      - collection
+      - status
+      - savedAt
+    sort:
+      - property: savedAt
+        direction: DESC
+  - type: table
+    name: 未读
+    filters:
+      and:
+        - note.status == "未读"
+    order:
+      - file.name
+      - author
+      - collection
+      - status
+      - savedAt
+    sort:
+      - property: savedAt
+        direction: DESC

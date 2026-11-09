@@ -505,16 +505,19 @@ def refresh_base(vault, folder, created_files):
             lines.extend(["    filters:", "      and:", "        - 'note.status == \"未读\"'"])
     payload = "\n".join(lines) + "\n"
     return refresh_managed(vault, path, payload, BASE_HEADER, "# rednote:base {}",
-                           "收藏视图", created_files, False)
+                           "收藏视图", created_files, False, keep_unmarked=True)
 
 
-def refresh_managed(vault, path, payload, pattern, label, name, created_files, dry_run):
+def refresh_managed(vault, path, payload, pattern, label, name, created_files, dry_run, *, keep_unmarked=False):
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     content = label.format(digest) + "\n" + payload
     if path.exists():
         old = path.read_bytes()
         previous = old.decode("utf-8")
         mark = pattern.match(previous)
+        # Obsidian can rewrite a Base and discard YAML comments when saving it.
+        if not mark and keep_unmarked:
+            return False
         if not mark or hashlib.sha256(previous[mark.end():].encode("utf-8")).hexdigest() != mark[1]:
             raise ConflictError(f"{name}已有手写内容，请核对后再更新。")
         if previous == content:

@@ -4,6 +4,8 @@
 
 ### 修复
 
+- Obsidian 重存收藏视图后，后续导入保留该视图并正常处理笔记。
+- 当选择的目录没有 `.obsidian` 时，Skill 会先请用户核对根目录，再重新预览。
 - 收件箱的失败原因改为 `> [!warning] 未导入：…` 提示框，在 Obsidian 阅读视图和实时预览中可见。旧版的注释式提示会在下次处理时自动清除。
 - README 和 SOURCES 中的 Codex 文档链接改为 Codex Skills 页面，补充用户级安装位置 `~/.agents/skills/`。
 

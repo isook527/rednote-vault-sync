@@ -12,6 +12,23 @@ def make_notes(vault, tmp_path, items):
     return [vault / record["note"] for record in report["records"]]
 
 
+def test_import_preserves_base_resaved_by_obsidian(vault, tmp_path):
+    make_notes(vault, tmp_path, [{"id": FIRST, "title": "首篇"}])
+    base = vault / "小红书收藏/收藏.base"
+    resaved = (ROOT / "tests/fixtures/obsidian-1.15-resaved-base.txt").read_bytes()
+    base.write_bytes(resaved)
+    manifest = data(tmp_path / "next.json", [{"id": FIRST}, {"id": SECOND, "title": "新篇"}])
+
+    report = command(vault, "--format", "json", "--source", manifest)
+    assert report["created"] == 1 and report["existing"] == 1
+    assert report["warnings"] == []
+    assert base.read_bytes() == resaved
+
+    rerun = command(vault, "--format", "json", "--source", manifest)
+    assert rerun["created"] == 0 and rerun["existing"] == 2
+    assert base.read_bytes() == resaved
+
+
 def test_inbox_failure_reason_is_a_visible_callout_and_clears_on_retry(vault):
     path = vault / "小红书收藏/收件箱.md"
     command(vault, "--format", "inbox", "--init-inbox")
