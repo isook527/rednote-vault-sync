@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | 粘贴自小红书的分享文案或链接 | --format shares | 标题、原帖链接、可选正文及本地附件。可粘贴多条分享文案 |
 | 自己整理的 JSON 清单与本地文件 | --format json | 笔记、作者、标签、收藏夹，以及可播放或查看的本地附件 |
+| Vault 内的收件箱 | --format inbox | 归档新条目并把成功项移入已处理 |
 | RedNote Vault Sync 旧笔记 | --format legacy | 从旧 Markdown 读取正文和原帖信息，复制它引用的本地图片和视频 |
 
 ## 分享文案和本地附件
@@ -41,17 +42,13 @@ JSON 文件必须是 {"version": 1, "items": [...]}。每条记录需有 url 或
 
 图片支持 JPG、PNG、GIF、WebP、AVIF、BMP。视频支持 MKV、MOV、MP4、OGV、WebM，能否播放取决于设备编解码器，见 [Obsidian 支持的文件格式](https://obsidian.md/help/file-formats)。附件需要是非空的本地文件，缺失时该条报错，修正后可以重试。正文保留常见标点，仅把能触发嵌入、活动内容或破坏正文边界的标记变成文本。附件通过 media 声明。正文中的 #标签默认显示为普通文本。使用 --keep-hashtags 时保留标签语法。
 
-## 旧库迁移
-
-用 --legacy-vault 指定旧库根目录，--source 指定其中的单篇 Markdown 或旧收藏子目录。可导入同一个 Vault 下的另一个目录，只要输出目录不在扫描范围内。
-
-脚本识别 sourcePlugin: rednote-vault-sync、sourcePlatform: rednote 和 sourceId 属性，跳过媒体索引页。它读取旧版 Vault 相对的 ![[媒体路径]]，也支持旧笔记旁的本地媒体。它复制支持的图片和视频，统计旧笔记中的远程图片链接，并以文本保留不支持的本地嵌入。请保留旧 Vault 的原始目录结构。旧库的账户字段、其他自定义属性和插件设置不迁移。
+旧插件格式见 [旧库迁移](legacy-migration.md)。
 
 ## 文件名、索引与短链映射
 
-默认笔记路径是 `<Vault 根目录>/小红书收藏/笔记/<ID>.md`。--filename-style title 为新笔记生成「标题 - ID后六位.md」。遇到同名时使用完整 ID。下次导入在同一笔记目录按 sourceId 识别已有文件，包括改名后的文件。
+使用 --filename-style id 时笔记路径是 `<Vault 根目录>/小红书收藏/笔记/<ID>.md`。新笔记默认采用 --filename-style title，生成「标题 - ID后六位.md」。遇到同名时使用完整 ID。下次导入在同一笔记目录按 sourceId 识别已有文件，包括改名后的文件。
 
---index 生成静态索引.md。启用后，同一目录后续导入会自动更新。编辑过的索引会被保留，脚本给出警告。索引可直接在 Obsidian 打开。
+导入默认维护静态索引.md 和收藏.base。--no-index 可跳过。编辑过的索引和收藏视图会被保留，脚本给出警告。Obsidian 中可直接打开索引，启用 Bases 时也可查看三个收藏视图。
 
 --link-map 接受用户确认的 JSON 对照表。键是短链，值是原帖 ID。示例中的链接和 ID 是虚构的。
 
@@ -64,8 +61,8 @@ JSON 文件必须是 {"version": 1, "items": [...]}。每条记录需有 url 或
 ## 报告、附件上限与撤销
 
 - --dry-run 列出标题、目标路径、正文字符数、拟写入及跳过附件数和原因。缺少 .obsidian 时报告警告。若给出 --report-file，预览也可把 JSON 保存到指定的外部报告路径。
-- 默认 stdout 为 JSON。--output table 输出人类可读表格，--report-file 独立保存 JSON。--progress 把处理进度写到 stderr，--json-errors 让命令行参数错误和致命输入错误也带可解析的 error 与 code。若同时开启进度，读取 stderr 最后一行的错误对象。
+- 默认 stdout 为 JSON。--output table 输出人类可读表格，--report-file 可指定 JSON 路径。有实际写入时，默认报告自动保存在 Vault 的小红书收藏/.导入记录/，stdout 中的 report_path 给出相对路径。--progress 把处理进度写到 stderr，--json-errors 让命令行参数错误和致命输入错误也带可解析的 error 与 code。若同时开启进度，读取 stderr 最后一行的错误对象。
 - --max-file-bytes 限制单个附件，--max-total-bytes 限制一次运行处理的去重后附件字节数。0 表示不限。超限记录失败，其他合规条目继续处理。
 - 导入报告的 created_files 列出新建文件及 SHA-256。导入完成会在 Vault 内写一份对应的撤销记录，路径见 receipt_path。撤销要求原 Vault 及原 JSON 报告。复制报告也可以，需保留 receipt 部分。
-- 先运行 --vault Vault --undo 导入报告.json --dry-run 核对路径。确定后去掉 --dry-run。撤销只处理那次新建、未改动的文件，保留仍被引用的附件及手写过的笔记。撤销删除笔记后，如需刷新自动索引，会在报告里列出。已有笔记中的补全内容、附件引用和原来就存在的文件需要手工整理。
+- 先运行 --vault Vault --undo 导入报告.json --dry-run 核对路径。确定后去掉 --dry-run。撤销会恢复未被再次修改的 AI 区块和收件箱，并移除那次新建、未改动的文件，保留仍被引用的附件及手写过的笔记。撤销删除笔记后，如需刷新自动索引，会在报告里列出。已有笔记中的补全内容、附件引用和原来就存在的文件需要手工整理。
 - 返回码 0 表示完成，1 表示失败、冲突、未归属资料或撤销保留项需要查看，2 表示命令或整体输入无效。

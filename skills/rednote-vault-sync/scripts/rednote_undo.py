@@ -7,6 +7,7 @@ import re
 import uuid
 from contextlib import nullcontext
 
+from rednote_changes import restore_change
 from rednote_files import (
     InputError, ConflictError, RESERVED, checked_path, enrichment_lock, publish_file,
     read_text, relative_parts, report_text, sha256_file, text_field, user_error, valid_source_id,
@@ -15,7 +16,7 @@ from rednote_files import (
 MEDIA_NAME = re.compile(r"[0-9a-f]{64}\.[a-z0-9]+")
 
 
-def save_receipt(report, vault, folder):
+def save_receipt(report, vault, folder, patches=None):
     receipt_id = uuid.uuid4().hex
     data = {
         "id": receipt_id,
@@ -24,8 +25,11 @@ def save_receipt(report, vault, folder):
         "index": report["index"],
         "created_files": report["created_files"],
     }
+    if patches:
+        data["modified_files"] = report["modified_files"]
+    private = {**data, "_patches": patches} if patches else data
     receipt = checked_path(vault, (*folder, ".rednote-receipts", f"{receipt_id}.json"))
-    if not publish_file(receipt, content=report_text(data)):
+    if not publish_file(receipt, content=report_text(private)):
         raise ConflictError("撤销记录路径已被占用。")
     report["receipt"] = data
     report["receipt_path"] = receipt.relative_to(vault).as_posix()
@@ -38,7 +42,13 @@ def receipt_paths(data, vault):
         raise InputError("这份报告不属于当前 Vault。")
     folder = relative_parts(text_field(data, "folder"))
     receipt = checked_path(vault, (*folder, ".rednote-receipts", f"{data['id']}.json"))
-    if not receipt.is_file() or json.loads(read_text(receipt)) != data:
+    if not receipt.is_file():
+        raise InputError("报告与 Vault 内的撤销记录不一致。")
+    saved = json.loads(read_text(receipt))
+    if not isinstance(saved, dict):
+        raise InputError("报告与 Vault 内的撤销记录不一致。")
+    patches = saved.pop("_patches", [])
+    if saved != data:
         raise InputError("报告与 Vault 内的撤销记录不一致。")
     if not isinstance(data.get("created_files"), list):
         raise InputError("报告缺少新增文件清单。")
@@ -54,6 +64,10 @@ def receipt_paths(data, vault):
             raise InputError("撤销清单包含越界路径或无效校验值。")
         if tail == ("索引.md",):
             kind = "index"
+        elif tail == ("收藏.base",):
+            kind = "base"
+        elif tail == ("收件箱.md",):
+            kind = "inbox_created"
         elif len(tail) == 2 and tail[0] == "笔记" and tail[1].endswith(".md"):
             kind = "note"
         elif len(tail) == 3 and tail[0] == "媒体" and valid_source_id(tail[1]) and MEDIA_NAME.fullmatch(tail[2]):
@@ -61,7 +75,29 @@ def receipt_paths(data, vault):
         else:
             raise InputError("撤销清单包含不支持的文件位置。")
         entries.append((kind, parts, digest))
-    return folder, entries
+    changes = []
+    descriptors = data.get("modified_files", [])
+    if not isinstance(patches, list) or not isinstance(descriptors, list) or len(patches) != len(descriptors):
+        raise InputError("报告里的修改记录不完整。")
+    for change, patch in zip(descriptors, patches):
+        if not isinstance(change, dict) or not isinstance(patch, list) or any(
+            not isinstance(pair, list) or len(pair) != 2 or not all(isinstance(x, str) for x in pair)
+            for pair in patch
+        ):
+            raise InputError("修改记录格式不正确。")
+        parts = relative_parts(text_field(change, "path"))
+        tail = parts[len(folder):]
+        kind = change.get("kind")
+        allowed = (kind == "inbox" and tail == ("收件箱.md",)) or (
+            kind == "ai" and len(tail) == 2 and tail[0] == "笔记" and tail[1].endswith(".md")
+        )
+        if parts[:len(folder)] != folder or not allowed or any(
+            not re.fullmatch(r"[0-9a-f]{64}", str(change.get(key, "")))
+            for key in ("before_sha256", "after_sha256", "patch_sha256")
+        ):
+            raise InputError("修改记录包含越界路径或无效校验值。")
+        changes.append((parts, change, patch))
+    return folder, entries, changes
 
 
 def referenced_media(vault, candidates, excluded):
@@ -86,12 +122,27 @@ def undo_import(args, vault, report, refresh_index):
     if not isinstance(raw, dict):
         raise InputError("撤销需要导入时生成的 JSON 报告。")
     data = raw.get("receipt")
-    folder, entries = receipt_paths(data, vault)
+    folder, entries, changes = receipt_paths(data, vault)
     report["mode"] = "undo_preview" if args.dry_run else "undo"
     report.update({"removed": 0, "would_remove": 0, "kept": 0, "already_missing": 0})
     notes_dir = checked_path(vault, (*folder, "笔记"))
     guard = nullcontext() if args.dry_run or not notes_dir.is_dir() else enrichment_lock(notes_dir / "pending.md")
     with guard:
+        for parts, change, patches in changes:
+            entry = {"path": "/".join(parts)}
+            try:
+                path = checked_path(vault, parts)
+                status = restore_change(path, change, patches, args.dry_run)
+                entry["status"] = status
+                report[status] = report.get(status, 0) + 1
+            except (InputError, OSError, UnicodeError) as error:
+                entry.update(status="kept", reason=user_error(error))
+                report["kept"] += 1
+                if change["kind"] == "inbox":
+                    report["records"].append(entry)
+                    report["warnings"].append("收件箱有冲突，本批归档文件一并保留。")
+                    return 1
+            report["records"].append(entry)
         return remove_receipt_files(args, vault, report, data, folder, entries, refresh_index)
 
 
@@ -100,6 +151,7 @@ def remove_receipt_files(args, vault, report, data, folder, entries, refresh_ind
     excluded = set()
     media = []
     index = []
+    bases = []
 
     def remove(path, digest):
         name = path.relative_to(vault).as_posix()
@@ -125,6 +177,8 @@ def remove_receipt_files(args, vault, report, data, folder, entries, refresh_ind
                 media.append((path, digest))
             elif kind == "index":
                 index.append((path, digest))
+            elif kind == "base":
+                bases.append((path, digest))
             elif remove(path, digest):
                 excluded.add(path)
         except (OSError, InputError) as error:
@@ -168,5 +222,16 @@ def remove_receipt_files(args, vault, report, data, folder, entries, refresh_ind
                     "reason": "更新索引中的现有笔记链接",
                 })
         except (OSError, InputError, UnicodeError) as error:
+            report["warnings"].append(user_error(error))
+    notes_dir = checked_path(vault, (*folder, "笔记"))
+    other_notes = any(note not in excluded for note in notes_dir.glob("*.md"))
+    for path, digest in bases:
+        try:
+            if other_notes:
+                report["records"].append({"path": path.relative_to(vault).as_posix(),
+                                          "status": "kept_view", "reason": "收藏视图仍有笔记"})
+            else:
+                remove(path, digest)
+        except (InputError, OSError) as error:
             report["warnings"].append(user_error(error))
     return 1 if report["kept"] or len(report["warnings"]) > warning_count else 0

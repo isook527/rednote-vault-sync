@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import unicodedata
+from datetime import date, datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -21,6 +22,9 @@ from rednote_files import (
     read_text, relative_parts, report_text, sha256_file, text_field, user_error, valid_source_id,
 )
 from rednote_undo import save_receipt, undo_import
+from rednote_annotate import annotate
+from rednote_inbox import Inbox, INTRO
+from rednote_notes import clean_text, legacy_frontmatter, note_fields, safe_markdown, scan_notes
 
 NOTE_ID = re.compile(r"[0-9a-f]{24}", re.I)
 URL_IN_TEXT = re.compile(r"https?://[A-Za-z0-9\-._~:/?#@!$&'*+,;=%]+", re.I)
@@ -29,20 +33,11 @@ SHARE_CODE = re.compile(r"([\U0001F300-\U0001FAFF])\s*[A-Za-z0-9]+\s*\1")
 SHARE_FOOTER = re.compile(r"\s*(?:复制本条(?:信息)?|打开【小红书】(?:App)?|点击链接).*$", re.I)
 WIKI_MEDIA = re.compile(r"!\[\[([^\]\n]+)\]\]")
 REMOTE_MEDIA = re.compile(r"!\[[^\]\n]*\]\(https?://[^\n)]*\)", re.I)
-QUERY_SECRET = re.compile(r"(?i)(?:xsec_token|access_token|refresh_token|api_key|session_id)=[^\s&#)\]<>]+")
 MEDIA_TYPES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".mkv", ".mov", ".mp4", ".ogv", ".webm"}
 BODY_START = "<!-- rednote:body:start -->"
 BODY_END = "<!-- rednote:body:end -->"
-ACTIVE_HTML = re.compile(
-    r"<(?=/?(?:script|style|iframe|object|embed|img|svg|math|link|base|form|input|button|"
-    r"video|audio|source|track|a|meta|canvas|template|textarea)\b|!--|"
-    r"[A-Za-z][\w:-]*\s[^>\n]*\bon\w+\s*=)",
-    re.I,
-)
-INLINE_HASHTAG = re.compile(r"(?<![\w\\#/:?&=])#(?=[\w/-]*[^\W\d]|[\w/-]*_)", re.UNICODE)
-ACTIVE_MARKDOWN = re.compile(r"!\[(?=\[|[^\]\n]*\][(\[])")
-ACTIVE_LINK = re.compile(r"(?i)(\]\(\s*<?)(?:javascript|vbscript|data|obsidian|file)\s*:")
 INDEX_HEADER = re.compile(r"\A<!-- rednote:index ([0-9a-f]{64}) -->\n")
+BASE_HEADER = re.compile(r"\A# rednote:base ([0-9a-f]{64})\n")
 
 
 @dataclass
@@ -58,6 +53,7 @@ class Record:
     remote_media: int = 0
     unsupported_media: int = 0
     keep_hashtags: bool = False
+    input_start: int = 0
 
 
 def canonical_url(value):
@@ -157,9 +153,13 @@ def share_lines(lines, collection):
                 yield number, error
                 continue
             title, author = parse_share_line(line, match) if len(links) == 1 else ("", "")
+            start = number
             if len(links) == 1 and not title and previous:
                 title, author = parse_share_line(previous)
-            yield number, Record(identity, title or "小红书收藏", url, author=author, collection=collection)
+                if title:
+                    start = number - 1
+            yield number, Record(identity, title or "小红书收藏", url, author=author,
+                                 collection=collection, input_start=start)
         previous = ""
 
 
@@ -187,42 +187,6 @@ def share_batch(args, report):
     except (InputError, OSError, UnicodeError) as error:
         return [(number, error)]
     return items
-
-
-def legacy_frontmatter(text):
-    if not text.startswith("---\n"):
-        return {}, text
-    header, separator, tail = text[4:].partition("\n---\n")
-    if not separator:
-        return {}, text
-    fields = {}
-    tags = []
-    reading_tags = False
-    for line in header.splitlines():
-        entry = re.fullmatch(r"\s+-\s+(.+)", line)
-        if reading_tags and entry:
-            value = legacy_scalar(entry.group(1))
-            if value:
-                tags.append(value)
-            continue
-        reading_tags = line.strip() == "tags:"
-        pair = re.fullmatch(r"([A-Za-z]+):\s*(.*)", line)
-        if pair:
-            key, value = pair.groups()
-            fields[key] = legacy_scalar(value)
-    fields["tags"] = tags
-    return fields, tail
-
-
-def legacy_scalar(value):
-    if value.startswith('"'):
-        try:
-            value = json.loads(value)
-        except json.JSONDecodeError:
-            return ""
-    elif len(value) >= 2 and value.startswith("'") and value.endswith("'"):
-        return value[1:-1].replace("''", "'")
-    return value if isinstance(value, str) else ""
 
 
 def legacy_record(path, root, collection):
@@ -294,19 +258,6 @@ def records(args, report):
                 yield number, error
 
 
-def clean_text(value):
-    value = "".join(c for c in value if ord(c) >= 32 or c in "\n\t")
-    return QUERY_SECRET.sub("[已移除链接参数]", value)
-
-
-def safe_markdown(value, keep_hashtags=False):
-    value = clean_text(value)
-    value = ACTIVE_HTML.sub("&lt;", value)
-    value = ACTIVE_MARKDOWN.sub("&#33;&#91;", value)
-    value = ACTIVE_LINK.sub(lambda match: "&#93;(" + match[0][2:], value)
-    return value if keep_hashtags else INLINE_HASHTAG.sub("&#35;", value)
-
-
 def body_section(record):
     return ["## 收藏内容", "", BODY_START, safe_markdown(record.body, record.keep_hashtags), BODY_END, ""]
 
@@ -321,8 +272,10 @@ def note_markdown(record, attachments):
         "sourceId": record.identity, "sourceUrl": record.url, "author": clean_text(record.author),
         "collection": clean_text(record.collection), "tags": ["rednote", *tags],
         "localMediaCount": len(attachments),
+        "status": "未读",
     }
-    lines = ["---", *(f"{k}: {json.dumps(v, ensure_ascii=False)}" for k, v in properties.items()), "---", "", f"# {safe_markdown(title)}", ""]
+    lines = ["---", *(f"{k}: {json.dumps(v, ensure_ascii=False)}" for k, v in properties.items()),
+             f"savedAt: {date.today().isoformat()}", "---", "", f"# {safe_markdown(title)}", ""]
     lines.extend([f"[打开小红书原帖]({record.url})", ""])
     if record.body:
         lines.extend(body_section(record))
@@ -330,6 +283,7 @@ def note_markdown(record, attachments):
         lines.extend(["## 本地附件", "", *(f"![[{p.as_posix()}]]" for p in attachments), ""])
     if record.remote_media:
         lines.extend([f"旧笔记有 {record.remote_media} 个远程媒体链接。", ""])
+    lines.extend(["## 我的笔记", ""])
     return "\n".join(lines) + "\n"
 
 
@@ -485,26 +439,6 @@ def read_link_map(path):
     return mapping, reverse
 
 
-def note_fields(path):
-    fields, _ = legacy_frontmatter(read_text(path))
-    return fields
-
-
-def scan_notes(directory):
-    notes = {}
-    for note in sorted(directory.glob("*.md")):
-        if note.is_symlink() or not note.is_file():
-            continue
-        try:
-            fields = note_fields(note)
-        except (OSError, UnicodeError):
-            continue
-        source_id = fields.get("sourceId", "")
-        if fields.get("sourcePlatform") == "rednote" and valid_source_id(source_id):
-            notes.setdefault(source_id, []).append(note)
-    return notes
-
-
 def title_filename(title):
     title = unicodedata.normalize("NFC", clean_text(title))
     title = re.sub(r'[\\/:*?"<>|#\[\]^%]', " ", title)
@@ -552,13 +486,37 @@ def refresh_index(vault, folder, created_files=None, *, dry_run=False, excluded=
                 continue
             lines.append(f"- [[{target}|{label}]]")
     payload = "\n".join(lines) + "\n"
-    content = f"<!-- rednote:index {hashlib.sha256(payload.encode('utf-8')).hexdigest()} -->\n{payload}"
+    return refresh_managed(vault, path, payload, INDEX_HEADER, "<!-- rednote:index {} -->",
+                           "索引", created_files, dry_run)
+
+
+def refresh_base(vault, folder, created_files):
+    path = checked_path(vault, (*folder, "收藏.base"))
+    expr = 'file.inFolder(' + json.dumps("/".join((*folder, "笔记")), ensure_ascii=False) + ')'
+    lines = ["filters:", "  and:", "    - " + json.dumps(expr, ensure_ascii=False),
+             "    - 'file.ext == \"md\"'", "views:"]
+    for name in ("全部", "按收藏夹", "未读"):
+        lines.extend(["  - type: table", f"    name: {name}",
+                      "    order: [file.name, note.author, note.collection, note.status, note.savedAt]",
+                      "    sort:", "      - property: note.savedAt", "        direction: DESC"])
+        if name == "按收藏夹":
+            lines.extend(["    groupBy:", "      property: note.collection", "      direction: ASC"])
+        if name == "未读":
+            lines.extend(["    filters:", "      and:", "        - 'note.status == \"未读\"'"])
+    payload = "\n".join(lines) + "\n"
+    return refresh_managed(vault, path, payload, BASE_HEADER, "# rednote:base {}",
+                           "收藏视图", created_files, False)
+
+
+def refresh_managed(vault, path, payload, pattern, label, name, created_files, dry_run):
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    content = label.format(digest) + "\n" + payload
     if path.exists():
         old = path.read_bytes()
         previous = old.decode("utf-8")
-        mark = INDEX_HEADER.match(previous)
+        mark = pattern.match(previous)
         if not mark or hashlib.sha256(previous[mark.end():].encode("utf-8")).hexdigest() != mark[1]:
-            raise ConflictError("索引已有手写内容，请核对后再更新。")
+            raise ConflictError(f"{name}已有手写内容，请核对后再更新。")
         if previous == content:
             return False
         if not dry_run:
@@ -587,6 +545,38 @@ def print_report(report, args):
         raise InputError("报告路径已存在。请另选一个文件名。")
 
 
+def automatic_report(args, vault, folder, report):
+    if args.report_file:
+        return
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S-%fZ")
+    path = checked_path(vault, (*folder, ".导入记录", stamp + ".json"))
+    args.report_file = path
+    report["report_path"] = path.relative_to(vault).as_posix()
+
+
+def initialize_inbox(args, vault, folder, report):
+    path = args.source
+    relative = path.relative_to(vault).as_posix()
+    report.update(index=False, created_files=[])
+    if path.is_file():
+        status = "existing"
+    elif path.exists():
+        raise InputError("收件箱路径已被占用。")
+    elif args.dry_run:
+        status = "planned"
+    elif publish_file(path, content=INTRO):
+        status = "created"
+        report["created_files"].append({"path": relative, "sha256": hashlib.sha256(INTRO.encode()).hexdigest()})
+        save_receipt(report, vault, folder)
+        automatic_report(args, vault, folder, report)
+    else:
+        status = "existing"
+    report["records"].append({"note": relative, "status": status})
+    report[status] = 1
+    print_report(report, args)
+    return 0
+
+
 def run(args):
     if not args.vault.is_dir():
         raise InputError("目标 Vault 路径不存在或不是文件夹。")
@@ -605,7 +595,26 @@ def run(args):
         status = undo_import(args, vault, report, refresh_index)
         print_report(report, args)
         return status
-    if not args.format or args.source is None:
+    if args.annotate:
+        folder = relative_parts(args.folder)
+        changes, status = annotate(args, vault, folder, report)
+        if changes:
+            save_receipt(report, vault, folder, changes)
+            automatic_report(args, vault, folder, report)
+        print_report(report, args)
+        return status
+    inbox = None
+    if args.init_inbox and args.format != "inbox":
+        raise InputError("--init-inbox 需要 --format inbox。")
+    if args.format == "inbox":
+        folder = relative_parts(args.folder)
+        if args.source is not None:
+            raise InputError("收件箱模式使用目标目录中的收件箱.md。")
+        args.source = checked_path(vault, (*folder, "收件箱.md"))
+        if args.init_inbox:
+            return initialize_inbox(args, vault, folder, report)
+        inbox = Inbox(args.source)
+    elif not args.format or args.source is None:
         raise InputError("导入需要 --format 和 --source。")
 
     args.source = Path(os.path.abspath(args.source))
@@ -625,35 +634,35 @@ def run(args):
     if args.format == "legacy" and args.source.is_dir() and output.is_relative_to(args.source):
         raise InputError("旧笔记源目录包含输出目录。请缩小输入范围或换一个目标 Vault。")
     mapping, reverse = read_link_map(args.link_map)
-    index_path = output / "索引.md"
     manage_index = args.index
-    if not manage_index and index_path.is_file() and not index_path.is_symlink():
-        with index_path.open("rb") as handle:
-            manage_index = bool(INDEX_HEADER.match(handle.readline(128).decode("utf-8", errors="replace")))
     notes_dir = output / "笔记"
     notes = scan_notes(notes_dir) if notes_dir.is_dir() and not notes_dir.is_symlink() else {}
     report.update({
         "created": 0, "planned": 0, "existing": 0, "updated": 0, "planned_update": 0,
         "conflict": 0, "unassigned_media": [], "unassigned_body": False, "duplicate": 0, "failed": 0,
         "local_media": 0, "remote_media_skipped": 0, "unsupported_media_skipped": 0,
-        "index": manage_index, "created_files": [],
+        "index": manage_index, "created_files": [], "link_only": 0,
     })
-    seen, claimed = set(), set()
+    seen, claimed = {}, set()
     created_files, budget = {}, MediaBudget(args.max_total_bytes)
     reasons = {
         "created": "已创建笔记", "planned": "将创建笔记", "existing": "同一篇已存在且没有可补全的内容",
         "updated": "已补全原笔记", "planned_update": "将补全原笔记",
         "duplicate": "同一来源已在本批处理",
     }
-    for number, record in records(args, report):
+    inputs = share_lines(inbox.lines, args.collection) if inbox else records(args, report)
+    for number, record in inputs:
         item = {"input": number, "title": "", "attachments": 0, "body_chars": 0,
                 "media_to_write": 0, "media_skipped": 0}
         count = 0
         try:
             if isinstance(record, Exception):
                 raise record
-            item.update(title=" ".join(clean_text(record.title).split()), attachments=len(record.media),
-                        body_chars=len(record.body))
+            item.update(title=" ".join(clean_text(record.title).split()),
+                        author=" ".join(clean_text(record.author).split()),
+                        attachments=len(record.media), body_chars=len(record.body))
+            if inbox:
+                item["input_start"] = record.input_start or number
             record.keep_hashtags = args.keep_hashtags
             if record.identity in mapping:
                 record.identity, record.url = canonical_url(
@@ -661,6 +670,7 @@ def run(args):
                 )
             if record.identity in seen:
                 status = "duplicate"
+                item["note"] = seen[record.identity]
             else:
                 note, stored_id = choose_note(
                     record, vault, folder, notes, reverse.get(record.identity, ()), claimed, args.filename_style
@@ -670,8 +680,10 @@ def run(args):
                     print(report["warnings"][0], file=sys.stderr)
                     warn_vault = False
                 status, path, count = import_record(record, vault, folder, note, stored_id, args, created_files, budget)
-                seen.add(record.identity)
+                seen[record.identity] = item["note"]
                 if status in {"created", "planned"}:
+                    if not record.body and not record.media:
+                        report["link_only"] += 1
                     report["remote_media_skipped"] += record.remote_media
                     report["unsupported_media_skipped"] += record.unsupported_media
                     notes.setdefault(record.identity, []).append(vault / path)
@@ -687,27 +699,42 @@ def run(args):
         report["records"].append(item)
         if args.progress and len(report["records"]) % 100 == 0:
             print(f"已处理 {len(report['records'])} 条", file=sys.stderr)
-    if not report["records"]:
+    if not report["records"] and not inbox:
         raise InputError("没有可导入的收藏。请检查输入格式与链接，或选择实际的旧笔记目录。")
     if args.progress:
         print(f"处理完成，共 {len(report['records'])} 条", file=sys.stderr)
-    index_error = False
-    if manage_index and not args.dry_run and notes:
+    index_error = index_changed = False
+    if manage_index and not args.dry_run and notes and report["records"]:
         try:
-            refresh_index(vault, folder, created_files)
+            index_changed = refresh_index(vault, folder, created_files)
+            index_changed = refresh_base(vault, folder, created_files) or index_changed
         except (InputError, OSError, UnicodeError) as error:
             index_error = True
             report["warnings"].append(user_error(error))
+    changes = []
+    inbox_error = False
+    if inbox and report["records"]:
+        try:
+            count, descriptor, patch = inbox.update(report["records"], vault, args.dry_run, notes_dir / "pending.md")
+            report["inbox_would_move" if args.dry_run else "inbox_moved"] = count
+            if descriptor:
+                report["modified_files"] = [descriptor]
+                changes.append(patch)
+        except (InputError, OSError, UnicodeError) as error:
+            inbox_error = True
+            report["warnings"].append(user_error(error))
     report["created_files"] = [{"path": path, "sha256": digest} for path, digest in created_files.items()]
     receipt_error = False
-    if report["created_files"]:
+    if report["created_files"] or changes:
         try:
-            save_receipt(report, vault, folder)
+            save_receipt(report, vault, folder, changes)
         except (InputError, OSError, UnicodeError) as error:
             receipt_error = True
             report["warnings"].append("无法保存撤销记录。" + user_error(error))
+    if not args.dry_run and (report["created_files"] or report["updated"] or index_changed or changes):
+        automatic_report(args, vault, folder, report)
     print_report(report, args)
-    return 1 if index_error or receipt_error or any(
+    return 1 if index_error or receipt_error or inbox_error or any(
         report[key] for key in ("failed", "conflict", "unassigned_media", "unassigned_body")
     ) else 0
 
@@ -743,7 +770,9 @@ def main():
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--version", action="version", version=skill_version())
-    parser.add_argument("--format", choices=["shares", "json", "legacy"])
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--format", choices=["shares", "json", "legacy", "inbox"])
+    parser.add_argument("--init-inbox", action="store_true", help="经用户同意后创建空收件箱")
     parser.add_argument("--source", type=Path)
     parser.add_argument("--vault", type=Path, required=True)
     parser.add_argument("--legacy-vault", type=Path)
@@ -754,11 +783,13 @@ def main():
     parser.add_argument("--enrich", action="store_true", help="给已归档的同一篇笔记补上缺失正文和附件")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--keep-hashtags", action="store_true", help="保留正文里的 Obsidian 标签语法")
-    parser.add_argument("--undo", type=Path, help="依据导入 JSON 报告撤销本次新建文件")
+    mode.add_argument("--undo", type=Path, help="依据导入 JSON 报告撤销本次新建文件和受控修改")
+    mode.add_argument("--annotate", type=Path, help="应用用户 agent 提供的本地 annotations.json")
     parser.add_argument("--report-file", type=Path, help="将 JSON 报告保存为新文件")
     parser.add_argument("--output", choices=["json", "table"], default="json")
-    parser.add_argument("--filename-style", choices=["id", "title"], default="id")
-    parser.add_argument("--index", action="store_true", help="维护静态索引.md")
+    parser.add_argument("--filename-style", choices=["id", "title"], default="title")
+    parser.add_argument("--index", dest="index", action="store_true", default=True, help="维护静态索引.md")
+    parser.add_argument("--no-index", dest="index", action="store_false", help="跳过索引")
     parser.add_argument("--link-map", type=Path, help="用户确认的短链与原帖 ID 对照表")
     parser.add_argument("--json-errors", action="store_true", help="将命令行参数错误也输出为 JSON")
     parser.add_argument("--progress", action="store_true", help="在标准错误输出中显示处理进度")

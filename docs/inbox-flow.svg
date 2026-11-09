@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="340" viewBox="0 0 1080 340" role="img" aria-labelledby="title description">
+  <title id="title">从手机分享文案到 Obsidian 收藏</title>
+  <desc id="description">复制分享文案，粘贴到收件箱，交给 agent 预览与归档。</desc>
+  <rect width="1080" height="340" rx="22" fill="#f8f3ed"/>
+  <g font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" fill="#321f19">
+    <text x="44" y="61" font-size="29" font-weight="700">手机收藏，回到电脑一起整理</text>
+    <g fill="#fffdf9" stroke="#dcc8b8">
+      <rect x="44" y="105" width="300" height="177" rx="17"/>
+      <rect x="390" y="105" width="300" height="177" rx="17"/>
+      <rect x="736" y="105" width="300" height="177" rx="17"/>
+    </g>
+    <g font-size="17" font-weight="700" fill="#a34329">
+      <text x="66" y="143">01　小红书</text>
+      <text x="412" y="143">02　Obsidian</text>
+      <text x="758" y="143">03　Agent</text>
+    </g>
+    <g font-size="25" font-weight="700">
+      <text x="66" y="190">复制分享文案</text>
+      <text x="412" y="190">粘贴到收件箱</text>
+      <text x="758" y="190">预览后归档</text>
+    </g>
+    <g font-size="17" fill="#604b42">
+      <text x="66" y="233">打开分享菜单，复制文字</text>
+      <text x="412" y="233">每行一条，放在已处理上方</text>
+      <text x="758" y="233">成功的条目附上笔记链接</text>
+    </g>
+    <g fill="none" stroke="#a34329" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M355 193h23m-7-7 7 7-7 7"/>
+      <path d="M701 193h23m-7-7 7 7-7 7"/>
+    </g>
+  </g>
+</svg>

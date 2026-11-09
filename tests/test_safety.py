@@ -24,7 +24,7 @@ def vault(tmp_path):
 
 def cli(vault, *flags, status=0, output="json"):
     process = subprocess.run(
-        [sys.executable, "-B", str(CLI), "--vault", str(vault), *map(str, flags)],
+        [sys.executable, "-B", str(CLI), "--filename-style", "id", "--vault", str(vault), *map(str, flags)],
         capture_output=True, text=True, encoding="utf-8",
     )
     assert process.returncode == status, (process.stdout, process.stderr)
@@ -107,24 +107,24 @@ def test_map_deduplicates_variants_and_enriches_preexisting_shortlink(vault, tmp
     assert (report["created"], report["updated"]) == (0, 1)
     assert imported_note(vault, report) == note
     again = cli(vault, *share(tmp_path, "短链重跑", SHORT), "--link-map", link_map)
-    assert again["existing"] == 1 and len(list(vault.rglob("*.md"))) == 1
+    assert again["existing"] == 1 and len(list((vault / "小红书收藏/笔记").glob("*.md"))) == 1
 
 
 def test_undo_preview_and_actual_removal_only_touch_verified_new_files(vault, tmp_path):
     path = tmp_path / "导入.json"
     original = cli(vault, *share(tmp_path), "--attach", PNG, "--report-file", path, "--index")
     files = [vault / entry["path"] for entry in original["created_files"]]
-    assert len(files) == 3 and all(path.is_file() for path in files)
+    assert len(files) == 4 and all(path.is_file() for path in files)
     preview = cli(vault, "--undo", path, "--dry-run")
-    assert preview["would_remove"] == 3 and all(path.is_file() for path in files)
+    assert preview["would_remove"] == 4 and all(path.is_file() for path in files)
     undo = cli(vault, "--undo", path)
-    assert undo["removed"] == 3 and all(not path.exists() for path in files)
-    assert cli(vault, "--undo", path)["already_missing"] == 3
+    assert undo["removed"] == 4 and all(not path.exists() for path in files)
+    assert cli(vault, "--undo", path)["already_missing"] == 4
 
 
 def test_undo_preserves_edited_notes_and_referenced_attachments(vault, tmp_path):
     path = tmp_path / "导入.json"
-    original = cli(vault, *share(tmp_path), "--attach", PNG, "--report-file", path)
+    original = cli(vault, *share(tmp_path), "--attach", PNG, "--report-file", path, "--no-index")
     note = imported_note(vault, original)
     before = note.read_bytes() + "\n手写批注。\n".encode()
     note.write_bytes(before)

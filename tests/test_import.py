@@ -25,7 +25,7 @@ class ImportTests(unittest.TestCase):
 
     def invoke(self, mode, source, *args, expect=0):
         result = subprocess.run(
-            [sys.executable, str(CLI), "--format", mode, "--source", str(source),
+            [sys.executable, str(CLI), "--filename-style", "id", "--no-index", "--format", mode, "--source", str(source),
              "--vault", str(self.vault), *args],
             capture_output=True, text=True, encoding="utf-8",
         )
